@@ -13,10 +13,19 @@ export function useAuth() {
   const { data: user, isLoading } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => {
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+      }
       try {
         return await authApi.me();
       } catch {
-        // 401 simply means not logged in — not a crash
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        }
         return null;
       }
     },
@@ -25,7 +34,22 @@ export function useAuth() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: (dto: LoginDto) => authApi.login(dto),
+    mutationFn: async (dto: LoginDto) => {
+      const userRes = await authApi.login(dto);
+      if (typeof window !== 'undefined' && userRes) {
+        const token = (userRes as any).accessToken;
+        const refreshToken = (userRes as any).refreshToken;
+        if (token) {
+          localStorage.setItem('access_token', token);
+          document.cookie = `access_token=${token}; path=/; max-age=604800; SameSite=Lax; Secure`;
+        }
+        if (refreshToken) {
+          localStorage.setItem('refresh_token', refreshToken);
+          document.cookie = `refresh_token=${refreshToken}; path=/; max-age=2592000; SameSite=Lax; Secure`;
+        }
+      }
+      return userRes;
+    },
     onSuccess: (user: User) => {
       queryClient.setQueryData(['auth', 'me'], user);
       const firstName =
@@ -34,18 +58,38 @@ export function useAuth() {
         user.email.split('@')[0];
       toast.success(`Welcome back, ${firstName}!`);
 
-      switch (user.role) {
-        case 'SUPER_ADMIN':
-          router.push('/admin');
-          break;
-        case 'FACULTY':
-          router.push('/faculty');
-          break;
-        case 'STUDENT':
-          router.push('/student');
-          break;
-        default:
-          router.push('/');
+      // Determine redirect target
+      let target = '/';
+      if (user.role === 'SUPER_ADMIN') target = '/admin';
+      else if (user.role === 'FACULTY') target = '/faculty';
+      else if (user.role === 'STUDENT') target = '/student';
+
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search);
+        const from = searchParams.get('from');
+        if (
+          from &&
+          from.startsWith('/') &&
+          !from.startsWith('/login') &&
+          !from.startsWith('/register')
+        ) {
+          if (from.startsWith('/admin') && user.role === 'SUPER_ADMIN') {
+            target = from;
+          } else if (
+            from.startsWith('/faculty') &&
+            (user.role === 'SUPER_ADMIN' || user.role === 'FACULTY')
+          ) {
+            target = from;
+          } else if (
+            from.startsWith('/student') &&
+            (user.role === 'SUPER_ADMIN' || user.role === 'FACULTY' || user.role === 'STUDENT')
+          ) {
+            target = from;
+          }
+        }
+
+        // Full window navigation ensures cookies and middleware are cleanly picked up immediately
+        window.location.href = target;
       }
     },
     onError: (error: Error & { response?: { data?: { message?: string } } }) => {
@@ -70,10 +114,22 @@ export function useAuth() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: authApi.logout,
+    mutationFn: async () => {
+      try {
+        await authApi.logout();
+      } catch {
+        // continue logout even if backend is unreachable
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      }
+    },
     onSuccess: () => {
       queryClient.clear();
-      router.push('/');
+      window.location.href = '/login';
       toast.info('You have been logged out.');
     },
   });

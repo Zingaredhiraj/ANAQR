@@ -43,26 +43,35 @@ export class AuthController {
     const { user, accessToken, refreshToken } = await this.authService.login(dto);
 
     const isProduction = this.config.get('NODE_ENV') === 'production';
-    const cookieDomain = this.config.get('COOKIE_DOMAIN', 'localhost');
+    const cookieDomain = this.config.get('COOKIE_DOMAIN');
     const cookieSecure = this.config.get('COOKIE_SECURE') === 'true' || isProduction;
 
-    res.cookie('access_token', accessToken, {
+    const cookieOptions: any = {
       httpOnly: true,
       secure: cookieSecure,
-      sameSite: 'lax',
-      domain: isProduction ? cookieDomain : undefined,
+      sameSite: cookieSecure ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    };
+
+    if (cookieDomain && cookieDomain !== 'localhost') {
+      cookieOptions.domain = cookieDomain;
+    }
+
+    res.cookie('access_token', accessToken, cookieOptions);
 
     res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: 'lax',
-      domain: isProduction ? cookieDomain : undefined,
+      ...cookieOptions,
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    return { message: 'Login successful', data: user };
+    return {
+      message: 'Login successful',
+      data: {
+        ...user,
+        accessToken,
+        refreshToken,
+      },
+    };
   }
 
   @Post('logout')
@@ -73,8 +82,20 @@ export class AuthController {
     const user = req.user as { id: string };
     if (user?.id) await this.authService.logout(user.id);
 
-    res.clearCookie('access_token');
-    res.clearCookie('refresh_token');
+    const isProduction = this.config.get('NODE_ENV') === 'production';
+    const cookieDomain = this.config.get('COOKIE_DOMAIN');
+    const cookieSecure = this.config.get('COOKIE_SECURE') === 'true' || isProduction;
+    const cookieOptions: any = {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: cookieSecure ? 'none' : 'lax',
+    };
+    if (cookieDomain && cookieDomain !== 'localhost') {
+      cookieOptions.domain = cookieDomain;
+    }
+
+    res.clearCookie('access_token', cookieOptions);
+    res.clearCookie('refresh_token', cookieOptions);
     return { message: 'Logged out successfully' };
   }
 

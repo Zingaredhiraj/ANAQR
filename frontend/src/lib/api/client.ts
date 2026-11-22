@@ -12,18 +12,43 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 15000,
 });
 
-// Response interceptor: unwrap the ApiResponse envelope
+// Request interceptor: attach bearer token from localStorage if available
+apiClient.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('access_token');
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// Response interceptor: handle 401 unauthenticated
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Only redirect if not already on auth pages to prevent redirect loops
-      if (
-        typeof window !== 'undefined' &&
-        !window.location.pathname.startsWith('/login') &&
-        !window.location.pathname.startsWith('/register')
-      ) {
-        window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+      if (typeof window !== 'undefined') {
+        const requestUrl = error.config?.url || '';
+        const isAuthCheck = requestUrl.includes('/auth/me') || requestUrl.includes('/auth/login');
+
+        // Only clear tokens and redirect if it's an actual expired session on a protected route
+        if (!isAuthCheck) {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+          if (
+            !window.location.pathname.startsWith('/login') &&
+            !window.location.pathname.startsWith('/register') &&
+            (window.location.pathname.startsWith('/admin') ||
+              window.location.pathname.startsWith('/faculty') ||
+              window.location.pathname.startsWith('/student'))
+          ) {
+            window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+          }
+        }
       }
     }
     return Promise.reject(error);

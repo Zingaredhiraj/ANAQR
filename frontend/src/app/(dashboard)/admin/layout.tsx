@@ -22,12 +22,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
-        router.push('/login');
+        window.location.href = '/login?from=%2Fadmin';
       } else if (user.role !== 'SUPER_ADMIN') {
-        router.push(user.role === 'FACULTY' ? '/faculty' : '/student');
+        window.location.href = user.role === 'FACULTY' ? '/faculty' : '/student';
       }
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading]);
 
   if (isLoading || !user || user.role !== 'SUPER_ADMIN') {
     return <PageSkeleton />;

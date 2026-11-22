@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,10 +16,42 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { login, loginPending } = useAuth();
+  const { user, login, loginPending } = useAuth();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+
+  // If already logged in, redirect directly to user's dashboard
+  useEffect(() => {
+    if (user) {
+      let target = '/';
+      if (user.role === 'SUPER_ADMIN') target = '/admin';
+      else if (user.role === 'FACULTY') target = '/faculty';
+      else if (user.role === 'STUDENT') target = '/student';
+
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search);
+        const from = searchParams.get('from');
+        if (
+          from &&
+          from.startsWith('/') &&
+          !from.startsWith('/login') &&
+          !from.startsWith('/register')
+        ) {
+          if (from.startsWith('/admin') && user.role === 'SUPER_ADMIN') {
+            target = from;
+          } else if (
+            from.startsWith('/faculty') &&
+            (user.role === 'SUPER_ADMIN' || user.role === 'FACULTY')
+          ) {
+            target = from;
+          } else if (from.startsWith('/student')) {
+            target = from;
+          }
+        }
+        window.location.href = target;
+      }
+    }
+  }, [user]);
 
   const {
     register,
@@ -36,14 +67,8 @@ export default function LoginPage() {
     setErrorMessage(null);
     setIsOffline(false);
     try {
-      const user = await login({ email: data.email, password: data.password });
-      if (user.role === 'SUPER_ADMIN') {
-        router.push('/admin');
-      } else if (user.role === 'FACULTY') {
-        router.push('/faculty');
-      } else {
-        router.push('/student');
-      }
+      await login({ email: data.email, password: data.password });
+      // Redirection is handled in loginMutation.onSuccess via window.location.href
     } catch (err: any) {
       const isNetworkError =
         err?.code === 'ERR_NETWORK' ||
@@ -54,7 +79,7 @@ export default function LoginPage() {
       if (isNetworkError) {
         setIsOffline(true);
         setErrorMessage(
-          'Cannot connect to the AnatoScan API server. Start the backend with: cd apps/api && pnpm start:dev'
+          'Cannot connect to the AnatoScan API server. Please verify backend status.'
         );
       } else {
         setErrorMessage(
@@ -87,11 +112,13 @@ export default function LoginPage() {
       </div>
 
       {errorMessage && (
-        <div className={`mb-5 flex items-start gap-2 p-3 rounded-xl text-xs border ${
-          isOffline
-            ? 'bg-amber-50 border-amber-200 text-amber-800'
-            : 'bg-red-50 border-red-200 text-red-600'
-        }`}>
+        <div
+          className={`mb-5 flex items-start gap-2 p-3 rounded-xl text-xs border ${
+            isOffline
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-red-50 border-red-200 text-red-600'
+          }`}
+        >
           {isOffline ? (
             <Server className="w-4 h-4 shrink-0 mt-0.5" />
           ) : (
@@ -139,7 +166,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loginPending}
-          className="w-full flex items-center justify-center gap-2 bg-[#10243A] hover:bg-[#0d1f33] text-white font-semibold text-sm py-2.5 px-4 rounded-xl shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-2 bg-[#10243A] hover:bg-[#0d1f33] text-white font-semibold text-sm py-2.5 px-4 rounded-xl shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
         >
           <span>{loginPending ? 'Authenticating...' : 'Sign In'}</span>
           {!loginPending && <ArrowRight className="w-4 h-4" />}
@@ -155,21 +182,21 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => setDemoCredentials('admin')}
-            className="text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 py-1.5 px-2 rounded-lg transition"
+            className="text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
           >
             Admin
           </button>
           <button
             type="button"
             onClick={() => setDemoCredentials('faculty')}
-            className="text-[11px] font-semibold bg-teal-50 hover:bg-teal-100 text-teal-800 py-1.5 px-2 rounded-lg transition"
+            className="text-[11px] font-semibold bg-teal-50 hover:bg-teal-100 text-teal-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
           >
             Faculty
           </button>
           <button
             type="button"
             onClick={() => setDemoCredentials('student')}
-            className="text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 py-1.5 px-2 rounded-lg transition"
+            className="text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
           >
             Student
           </button>

@@ -22,12 +22,12 @@ export default function FacultyLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
-        router.push('/login');
+        window.location.href = '/login?from=%2Ffaculty';
       } else if (user.role !== 'FACULTY' && user.role !== 'SUPER_ADMIN') {
-        router.push('/student');
+        window.location.href = '/student';
       }
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading]);
 
   if (isLoading || !user || (user.role !== 'FACULTY' && user.role !== 'SUPER_ADMIN')) {
     return <PageSkeleton />;

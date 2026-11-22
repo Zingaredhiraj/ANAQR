@@ -27,7 +27,7 @@ function decodeJwtPayload(token: string): JwtClaims | null {
 
 /** Which roles may access each route prefix. */
 const ROUTE_ROLES: Array<{ prefix: string; allowed: JwtClaims['role'][] }> = [
-  { prefix: '/admin',   allowed: ['SUPER_ADMIN'] },
+  { prefix: '/admin', allowed: ['SUPER_ADMIN'] },
   { prefix: '/faculty', allowed: ['SUPER_ADMIN', 'FACULTY'] },
   { prefix: '/student', allowed: ['SUPER_ADMIN', 'FACULTY', 'STUDENT'] },
 ];
@@ -35,43 +35,39 @@ const ROUTE_ROLES: Array<{ prefix: string; allowed: JwtClaims['role'][] }> = [
 /** Default home for each role after a forced redirect. */
 const ROLE_HOME: Record<JwtClaims['role'], string> = {
   SUPER_ADMIN: '/admin',
-  FACULTY:     '/faculty',
-  STUDENT:     '/student',
-  GUEST:       '/',
+  FACULTY: '/faculty',
+  STUDENT: '/student',
+  GUEST: '/',
 };
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const tokenCookie = request.cookies.get('access_token');
+  const claims = tokenCookie?.value ? decodeJwtPayload(tokenCookie.value) : null;
+  const isTokenValid = claims && (!claims.exp || Date.now() / 1000 <= claims.exp);
+
+  // If already authenticated user visits /login or /register, redirect to their role home
+  if (pathname === '/login' || pathname === '/register') {
+    if (isTokenValid && claims) {
+      const home = ROLE_HOME[claims.role] ?? '/';
+      return NextResponse.redirect(new URL(home, request.url));
+    }
+    return NextResponse.next();
+  }
+
   const route = ROUTE_ROLES.find((r) => pathname.startsWith(r.prefix));
   if (!route) return NextResponse.next();
 
-  const tokenCookie = request.cookies.get('access_token');
-  if (!tokenCookie?.value) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  const claims = decodeJwtPayload(tokenCookie.value);
-
-  // Malformed token → treat as unauthenticated
-  if (!claims) {
+  // If unauthenticated or token expired on protected routes
+  if (!tokenCookie?.value || !isTokenValid || !claims) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete('access_token');
-    response.cookies.delete('refresh_token');
-    return response;
-  }
-
-  // Expired token → redirect to login
-  if (claims.exp && Date.now() / 1000 > claims.exp) {
-    const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('from', pathname);
-    const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete('access_token');
-    response.cookies.delete('refresh_token');
+    if (tokenCookie?.value) {
+      response.cookies.delete('access_token');
+      response.cookies.delete('refresh_token');
+    }
     return response;
   }
 
@@ -85,5 +81,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/faculty/:path*', '/student/:path*'],
+  matcher: ['/admin/:path*', '/faculty/:path*', '/student/:path*', '/login', '/register'],
 };

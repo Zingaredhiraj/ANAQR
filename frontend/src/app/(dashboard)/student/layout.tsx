@@ -21,9 +21,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login');
+      window.location.href = '/login?from=%2Fstudent';
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading]);
 
   if (isLoading || !user) {
     return <PageSkeleton />;

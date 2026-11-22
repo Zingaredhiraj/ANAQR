@@ -39,6 +39,8 @@ export interface User {
   lastLoginAt?: string;
   studentProfile?: StudentProfile;
   facultyProfile?: FacultyProfile;
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 export interface LoginDto {
