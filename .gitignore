@@ -12,6 +12,7 @@ Thumbs.db
 coverage/
 prisma/migrations/dev.db
 *.sqlite
-uploads/
+/uploads/
+/backend/uploads/
 .vercel/
 .turbo/
