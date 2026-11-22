@@ -70,7 +70,7 @@ async function bootstrap() {
 
   // ── Global prefix & versioning ────────────────────────────────────
   app.setGlobalPrefix('api', {
-    exclude: ['/', 'health'],
+    exclude: ['/', 'health', 'api/health', 'api/v1/health'],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
