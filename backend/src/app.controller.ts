@@ -1,7 +1,9 @@
 import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Public } from './common/decorators';
 
 @ApiTags('health')
+@Public()
 @Controller({ version: VERSION_NEUTRAL })
 export class AppController {
   @Get()
