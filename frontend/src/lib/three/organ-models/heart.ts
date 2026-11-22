@@ -186,6 +186,7 @@ export function createHeartModel(
   sculptOrganicTissue(lvGeo, 7.5, 0.018, 1.2);
 
   const lvMesh = new THREE.Mesh(lvGeo, lvMat);
+  lvMesh.name = 'left_ventricle';
   lvMesh.scale.set(len * 0.82, hei * 0.95, wid * 0.8);
   lvMesh.rotation.z = -0.28; // 16° anatomical cardiac tilt
   lvMesh.rotation.y = 0.18;
@@ -207,6 +208,7 @@ export function createHeartModel(
   sculptOrganicTissue(rvGeo, 8.0, 0.015, 2.5);
 
   const rvMesh = new THREE.Mesh(rvGeo, rvMat);
+  rvMesh.name = 'right_ventricle';
   rvMesh.scale.set(len * 0.72, hei * 0.82, wid * 0.7);
   rvMesh.rotation.z = -0.15;
   rvMesh.position.set(len * 0.12, -hei * 0.05, wid * 0.18);
@@ -216,6 +218,7 @@ export function createHeartModel(
   // ── 3. Right Atrium & Auricle ────────────────────────────────────────────
   const raGeo = sculptOrganicTissue(new THREE.SphereGeometry(0.24, 48, 48), 6.0, 0.014, 3.2);
   const raMesh = new THREE.Mesh(raGeo, atriaMat);
+  raMesh.name = 'right_atrium';
   raMesh.scale.set(len * 0.65, hei * 0.58, wid * 0.6);
   raMesh.position.set(len * 0.28, hei * 0.18, wid * 0.02);
   heart.add(raMesh);
@@ -230,11 +233,13 @@ export function createHeartModel(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rAuriclePoints), 24, len * 0.055, 14, false),
     atriaMat
   );
+  rAuricle.name = 'right_atrium';
   heart.add(rAuricle);
 
   // ── 4. Left Atrium & Auricle ─────────────────────────────────────────────
   const laGeo = sculptOrganicTissue(new THREE.SphereGeometry(0.23, 48, 48), 6.5, 0.014, 4.1);
   const laMesh = new THREE.Mesh(laGeo, atriaMat);
+  laMesh.name = 'left_atrium';
   laMesh.scale.set(len * 0.62, hei * 0.55, wid * 0.62);
   laMesh.position.set(-len * 0.15, hei * 0.22, -wid * 0.14);
   heart.add(laMesh);
@@ -249,6 +254,7 @@ export function createHeartModel(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(lAuriclePoints), 24, len * 0.048, 14, false),
     atriaMat
   );
+  lAuricle.name = 'left_atrium';
   heart.add(lAuricle);
 
   // ── 5. Subepicardial Adipose Fat Deposits (Grooves) ───────────────────────
@@ -297,6 +303,7 @@ export function createHeartModel(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(aortaPath), 48, len * 0.075, 24, false),
     aortaMat
   );
+  aortaMesh.name = 'aortic_arch';
   aortaMesh.castShadow = true;
   heart.add(aortaMesh);
 
@@ -305,6 +312,7 @@ export function createHeartModel(
     new THREE.SphereGeometry(len * 0.09, 24, 24),
     aortaMat
   );
+  aorticBulb.name = 'aortic_arch';
   aorticBulb.position.set(-len * 0.02, hei * 0.18, wid * 0.04);
   aorticBulb.scale.set(1.1, 0.9, 1.1);
   heart.add(aorticBulb);
@@ -359,6 +367,7 @@ export function createHeartModel(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ptPath), 28, len * 0.068, 20, false),
     pulmonaryMat
   );
+  ptMesh.name = 'pulmonary_trunk';
   ptMesh.castShadow = true;
   heart.add(ptMesh);
 
@@ -368,12 +377,12 @@ export function createHeartModel(
     new THREE.Vector3(-len * 0.24, hei * 0.44, wid * 0.04),
     new THREE.Vector3(-len * 0.36, hei * 0.40, -wid * 0.06),
   ];
-  heart.add(
-    new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(lpaPath), 20, len * 0.038, 14, false),
-      pulmonaryMat
-    )
+  const lpaMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(lpaPath), 20, len * 0.038, 14, false),
+    pulmonaryMat
   );
+  lpaMesh.name = 'pulmonary_trunk';
+  heart.add(lpaMesh);
 
   // Right Pulmonary Artery (courses rightward under aortic arch)
   const rpaPath = [
@@ -382,12 +391,12 @@ export function createHeartModel(
     new THREE.Vector3(len * 0.18, hei * 0.42, -wid * 0.06),
     new THREE.Vector3(len * 0.32, hei * 0.38, -wid * 0.12),
   ];
-  heart.add(
-    new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rpaPath), 24, len * 0.038, 14, false),
-      pulmonaryMat
-    )
+  const rpaMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rpaPath), 24, len * 0.038, 14, false),
+    pulmonaryMat
   );
+  rpaMesh.name = 'pulmonary_trunk';
+  heart.add(rpaMesh);
 
   // Ligamentum Arteriosum (fibrous remnant connecting aortic arch to LPA)
   const ligPoints = [
@@ -408,12 +417,12 @@ export function createHeartModel(
     new THREE.Vector3(len * 0.26, hei * 0.45, -wid * 0.02),
     new THREE.Vector3(len * 0.24, hei * 0.24, wid * 0.02),
   ];
-  heart.add(
-    new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(svcPath), 24, len * 0.052, 16, false),
-      vcavaMat
-    )
+  const svcMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(svcPath), 24, len * 0.052, 16, false),
+    vcavaMat
   );
+  svcMesh.name = 'superior_vena_cava';
+  heart.add(svcMesh);
 
   // Inferior Vena Cava
   const ivcPath = [
@@ -421,12 +430,12 @@ export function createHeartModel(
     new THREE.Vector3(len * 0.24, -hei * 0.16, -wid * 0.04),
     new THREE.Vector3(len * 0.24, hei * 0.06, 0),
   ];
-  heart.add(
-    new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ivcPath), 24, len * 0.048, 16, false),
-      vcavaMat
-    )
+  const ivcMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ivcPath), 24, len * 0.048, 16, false),
+    vcavaMat
   );
+  ivcMesh.name = 'superior_vena_cava';
+  heart.add(ivcMesh);
 
   // ── 10. Left Anterior Descending (LAD) & Coronary Vasculature ─────────────
   // LAD artery descending along anterior sulcus toward apex
@@ -437,12 +446,12 @@ export function createHeartModel(
     new THREE.Vector3(-len * 0.14, -hei * 0.28, wid * 0.26),
     new THREE.Vector3(-len * 0.19, -hei * 0.44, wid * 0.17),
   ];
-  heart.add(
-    new THREE.Mesh(
-      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ladPath), 36, len * 0.016, 12, false),
-      coronaryArteryMat
-    )
+  const ladMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ladPath), 36, len * 0.016, 12, false),
+    coronaryArteryMat
   );
+  ladMesh.name = 'lad_coronary';
+  heart.add(ladMesh);
 
   // Diagonal Branch 1 (from LAD over LV anterior free wall)
   const d1Path = [

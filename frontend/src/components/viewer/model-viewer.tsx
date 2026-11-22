@@ -16,10 +16,17 @@ import {
   Volume2,
   VolumeX,
   ChevronRight,
+  ChevronLeft,
   Compass,
   Cpu,
   Heart as HeartIcon,
   ChevronUp,
+  Sliders,
+  Eye,
+  Crosshair,
+  Check,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { ARButton } from './ar-button';
 import { OrganType } from '@/lib/three/types';
@@ -45,6 +52,20 @@ interface ModelViewerProps {
   description?: string;
   hotspots?: Hotspot[];
   className?: string;
+}
+
+/** Native browser text-to-speech for anatomical narration */
+function speakText(text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.92;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  } catch (err) {
+    // Speech synthesis unavailable or muted
+  }
 }
 
 /** Map organ string & anatomical system context → canonical OrganType */
@@ -193,6 +214,25 @@ export function ModelViewer({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pin2DPositions, setPin2DPositions] = useState<Array<{ id: string; x: number; y: number; visible: boolean }>>([]);
+
+  // Enhanced 3D Viewer Settings
+  const [showSettings, setShowSettings] = useState(false);
+  const [isolateMode, setIsolateMode] = useState(true); // Isolate / dim non-selected parts
+  const [tissueOpacity, setTissueOpacity] = useState(1.0); // Translucency / X-Ray slider
+  const [rotationSpeed, setRotationSpeed] = useState(1.0); // Turntable speed
+  const [motionActive, setMotionActive] = useState(true); // Heartbeat / physiological pulse
+  const [autoNarrate, setAutoNarrate] = useState(false); // Text-to-speech narration
+
+  // Smooth camera animation references
+  const cameraTargetPosRef = useRef<THREE.Vector3 | null>(null);
+  const cameraLookAtRef = useRef<THREE.Vector3 | null>(null);
+  const activeHotspotRef = useRef<Hotspot | null>(null);
+  const originalMaterialsRef = useRef<Map<THREE.Mesh, any>>(new Map());
+
+  // Keep activeHotspotRef in sync for animation loop
+  useEffect(() => {
+    activeHotspotRef.current = activeHotspot;
+  }, [activeHotspot]);
 
   const safeOrganName = organName || 'Anatomical Specimen';
   const organType = resolveOrganType(safeOrganName, systemName, slug, description);
@@ -420,16 +460,33 @@ export function ModelViewer({
       // Animation Loop
       const clock = new THREE.Clock();
       let lastBeatTime = 0;
+      let lastCamX = 0;
+      let lastCamY = 0;
+      let lastCamZ = 0;
 
       function animate() {
         if (!isMounted) return;
         animFrameRef.current = requestAnimationFrame(animate);
         const elapsed = clock.getElapsedTime();
 
-        controls.update();
+        // 1. Smooth Camera Transition Lerp
+        if (cameraTargetPosRef.current && cameraRef.current && controlsRef.current) {
+          cameraRef.current.position.lerp(cameraTargetPosRef.current, 0.08);
+          if (cameraLookAtRef.current) {
+            controlsRef.current.target.lerp(cameraLookAtRef.current, 0.08);
+          }
+          controlsRef.current.update();
 
-        // Organic Physiological Simulations
-        if (organGroupRef.current) {
+          if (cameraRef.current.position.distanceTo(cameraTargetPosRef.current) < 0.005) {
+            cameraTargetPosRef.current = null;
+            cameraLookAtRef.current = null;
+          }
+        } else {
+          controls.update();
+        }
+
+        // 2. Organic Physiological Contractions
+        if (organGroupRef.current && motionActive) {
           const organ = organGroupRef.current;
           if (!organ.userData.baseScale) {
             organ.userData.baseScale = organ.scale.x;
@@ -476,37 +533,79 @@ export function ModelViewer({
           }
         }
 
-        // Update 2D Screen Coordinates for 3D Projected Pins
+        // 3. Highlighted 3D Beacon and Mesh Pulsing
+        if (organGroupRef.current) {
+          const beacon = organGroupRef.current.getObjectByName('landmark_3d_beacon');
+          if (beacon && beacon.visible) {
+            const ring = beacon.getObjectByName('beacon_ring') as THREE.Mesh;
+            if (ring) {
+              const pulse = (elapsed * 2.5) % 1.0;
+              ring.scale.setScalar(1.0 + pulse * 1.5);
+              (ring.material as THREE.MeshBasicMaterial).opacity = (1.0 - pulse) * 0.85;
+            }
+            const dot = beacon.getObjectByName('beacon_dot') as THREE.Mesh;
+            if (dot) {
+              const dotPulse = 1.0 + 0.25 * Math.sin(elapsed * 6.0);
+              dot.scale.setScalar(dotPulse);
+            }
+          }
+
+          if (activeHotspotRef.current) {
+            organGroupRef.current.traverse((child: any) => {
+              if (
+                child.isMesh &&
+                child.material &&
+                child.material.emissive &&
+                child.material.emissive.getHex() === 0x00e5ff
+              ) {
+                child.material.emissiveIntensity = 1.0 + 0.45 * Math.sin(elapsed * 5.5);
+              }
+            });
+          }
+        }
+
+        // 4. Update 2D Screen Coordinates for 3D Projected Pins
         if (canvasRef.current && cameraRef.current && organGroupRef.current) {
-          const cw = canvasRef.current.offsetWidth;
-          const ch = canvasRef.current.offsetHeight;
-          const projCam = cameraRef.current;
-          const organMesh = organGroupRef.current;
+          const cx = cameraRef.current.position.x;
+          const cy = cameraRef.current.position.y;
+          const cz = cameraRef.current.position.z;
+          const camMoved = Math.abs(cx - lastCamX) > 0.001 || Math.abs(cy - lastCamY) > 0.001 || Math.abs(cz - lastCamZ) > 0.001;
 
-          const newPositions = resolvedHotspots.map(hs => {
-            const [nx, ny, nz] = hs.normalizedPosition || [0, 0, 0];
-            const hotspotLocal = new THREE.Vector3(nx * 0.26, ny * 0.26, nz * 0.26);
-            hotspotLocal.applyMatrix4(organMesh.matrixWorld);
+          if (camMoved || autoRotate) {
+            lastCamX = cx;
+            lastCamY = cy;
+            lastCamZ = cz;
 
-            const toCamera = projCam.position.clone().sub(hotspotLocal).normalize();
-            const normal = hotspotLocal.clone().sub(organMesh.position).normalize();
-            const isFrontFacing = toCamera.dot(normal) > -0.25;
+            const cw = canvasRef.current.offsetWidth;
+            const ch = canvasRef.current.offsetHeight;
+            const projCam = cameraRef.current;
+            const organMesh = organGroupRef.current;
 
-            const screenCoord = hotspotLocal.clone().project(projCam);
+            const newPositions = resolvedHotspots.map(hs => {
+              const [nx, ny, nz] = hs.normalizedPosition || [0, 0, 0];
+              const hotspotLocal = new THREE.Vector3(nx * 0.26, ny * 0.26, nz * 0.26);
+              hotspotLocal.applyMatrix4(organMesh.matrixWorld);
 
-            const px = (screenCoord.x * 0.5 + 0.5) * cw;
-            const py = (-screenCoord.y * 0.5 + 0.5) * ch;
-            const isWithinBounds = screenCoord.z < 1.0 && px >= 16 && px <= cw - 16 && py >= 45 && py <= ch - 45;
+              const toCamera = projCam.position.clone().sub(hotspotLocal).normalize();
+              const normal = hotspotLocal.clone().sub(organMesh.position).normalize();
+              const isFrontFacing = toCamera.dot(normal) > -0.25;
 
-            return {
-              id: hs.id,
-              x: px,
-              y: py,
-              visible: isFrontFacing && isWithinBounds,
-            };
-          });
+              const screenCoord = hotspotLocal.clone().project(projCam);
 
-          setPin2DPositions(newPositions);
+              const px = (screenCoord.x * 0.5 + 0.5) * cw;
+              const py = (-screenCoord.y * 0.5 + 0.5) * ch;
+              const isWithinBounds = screenCoord.z < 1.0 && px >= 16 && px <= cw - 16 && py >= 45 && py <= ch - 45;
+
+              return {
+                id: hs.id,
+                x: px,
+                y: py,
+                visible: isFrontFacing && isWithinBounds,
+              };
+            });
+
+            setPin2DPositions(newPositions);
+          }
         }
 
         renderer.render(scene, camera);
@@ -538,56 +637,224 @@ export function ModelViewer({
     };
   }, [organType, resolvedHotspots, playHeartbeatSound]);
 
-  // X-Ray Mode Toggle
-  useEffect(() => {
-    if (!organGroupRef.current) return;
-    organGroupRef.current.traverse((child: any) => {
-      if (child.isMesh && child.material) {
-        const mats = Array.isArray(child.material) ? child.material : [child.material];
-        mats.forEach((mat: any) => {
-          mat.transparent = xrayMode;
-          mat.opacity = xrayMode ? 0.22 : 1.0;
-          mat.wireframe = false;
-          if (xrayMode) {
-            mat.depthWrite = false;
-            mat.side = THREE.DoubleSide;
-          } else {
-            mat.depthWrite = true;
-            mat.side = THREE.FrontSide;
-          }
-          mat.needsUpdate = true;
-        });
-      }
-    });
-  }, [xrayMode]);
-
-  // Auto-rotate sync
+  // Turntable rotation speed sync
   useEffect(() => {
     if (controlsRef.current) {
-      controlsRef.current.autoRotate = autoRotate;
+      controlsRef.current.autoRotate = autoRotate && rotationSpeed > 0;
+      controlsRef.current.autoRotateSpeed = 2.0 * rotationSpeed;
     }
-  }, [autoRotate]);
+  }, [autoRotate, rotationSpeed]);
+
+  // Synchronize 3D Part Highlighting, Dimming, and Spatial Beacon
+  useEffect(() => {
+    const organGroup = organGroupRef.current;
+    if (!organGroup) return;
+
+    // 1. Manage 3D Spatial Beacon Marker on Organ Surface
+    let beacon = organGroup.getObjectByName('landmark_3d_beacon') as THREE.Group;
+    if (!beacon) {
+      beacon = new THREE.Group();
+      beacon.name = 'landmark_3d_beacon';
+
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.95 })
+      );
+      dot.name = 'beacon_dot';
+      beacon.add(dot);
+
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.018, 0.032, 32),
+        new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+      );
+      ring.name = 'beacon_ring';
+      beacon.add(ring);
+
+      organGroup.add(beacon);
+    }
+
+    if (activeHotspot) {
+      const [nx, ny, nz] = activeHotspot.normalizedPosition || [0, 0, 0];
+      beacon.position.set(nx * 0.26, ny * 0.26, nz * 0.26);
+      beacon.visible = true;
+      const normal = beacon.position.clone().normalize();
+      beacon.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    } else {
+      if (beacon) beacon.visible = false;
+    }
+
+    // 2. Highlighting Corresponding Organ Part Mesh(es)
+    organGroup.traverse((child: any) => {
+      if (child.isMesh && child.name !== 'beacon_dot' && child.name !== 'beacon_ring') {
+        if (!originalMaterialsRef.current.has(child)) {
+          originalMaterialsRef.current.set(child, {
+            mat: child.material,
+            emissiveHex: child.material.emissive ? child.material.emissive.getHex() : 0,
+            emissiveIntensity: child.material.emissiveIntensity ?? 0,
+            opacity: child.material.opacity ?? 1.0,
+            transparent: child.material.transparent ?? false,
+          });
+        }
+
+        const orig = originalMaterialsRef.current.get(child)!;
+
+        if (!activeHotspot) {
+          // Restore pristine material state
+          child.material = orig.mat;
+          if (child.material.emissive) {
+            child.material.emissive.setHex(orig.emissiveHex);
+            child.material.emissiveIntensity = orig.emissiveIntensity;
+          }
+          child.material.transparent = xrayMode || tissueOpacity < 0.98;
+          child.material.opacity = xrayMode ? 0.22 : tissueOpacity;
+          child.material.needsUpdate = true;
+        } else {
+          // Determine if this mesh corresponds to the selected anatomical part
+          const hsId = activeHotspot.id.toLowerCase();
+          const meshName = (child.name || '').toLowerCase();
+
+          // Calculate center and distance
+          if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
+          const meshCenter = new THREE.Vector3();
+          child.geometry.boundingBox.getCenter(meshCenter);
+          meshCenter.applyMatrix4(child.matrix);
+
+          const [nx, ny, nz] = activeHotspot.normalizedPosition || [0, 0, 0];
+          const hsPos = new THREE.Vector3(nx * 0.26, ny * 0.26, nz * 0.26);
+          const dist = meshCenter.distanceTo(hsPos);
+
+          const isNamedMatch = meshName && (
+            meshName.includes(hsId) ||
+            hsId.includes(meshName) ||
+            (hsId.includes('atrium') && meshName.includes('atrium')) ||
+            (hsId.includes('ventricle') && meshName.includes('ventricle')) ||
+            (hsId.includes('aorta') && meshName.includes('aorta')) ||
+            (hsId.includes('pulmonary') && meshName.includes('pulmonary')) ||
+            (hsId.includes('vena_cava') && meshName.includes('vena_cava')) ||
+            (hsId.includes('coronary') && meshName.includes('coronary')) ||
+            (hsId.includes('apex') && meshName.includes('left_ventricle'))
+          );
+
+          const isProximityMatch = dist < 0.12;
+          const isSelectedPart = isNamedMatch || isProximityMatch;
+
+          if (isSelectedPart) {
+            // Emissive Glowing Neon Surgical Highlight
+            if (child.material.emissive) {
+              child.material.emissive.setHex(0x00e5ff); // Vivid Medical Cyan
+              child.material.emissiveIntensity = 1.25;
+            }
+            child.material.opacity = 1.0;
+            child.material.transparent = false;
+            child.material.needsUpdate = true;
+          } else {
+            // Dim or Isolate surrounding organ tissues
+            if (isolateMode) {
+              child.material.transparent = true;
+              child.material.opacity = 0.22; // Dimmed so the selected part stands out alone
+              if (child.material.emissive) {
+                child.material.emissiveIntensity = 0;
+              }
+            } else {
+              child.material.transparent = xrayMode;
+              child.material.opacity = xrayMode ? 0.22 : 0.65;
+              if (child.material.emissive) {
+                child.material.emissive.setHex(orig.emissiveHex);
+                child.material.emissiveIntensity = orig.emissiveIntensity * 0.3;
+              }
+            }
+            child.material.needsUpdate = true;
+          }
+        }
+      }
+    });
+  }, [activeHotspot, isolateMode, xrayMode, tissueOpacity]);
 
   // Reset Camera
   const handleResetCamera = useCallback(() => {
     if (cameraRef.current && controlsRef.current) {
-      cameraRef.current.position.set(0, 0.12, 0.95);
-      controlsRef.current.target.set(0, 0, 0);
-      controlsRef.current.update();
+      cameraTargetPosRef.current = new THREE.Vector3(0, 0.12, 0.95);
+      cameraLookAtRef.current = new THREE.Vector3(0, 0, 0);
     }
   }, []);
 
-  // Focus on selected hotspot
+  // Standard Anatomical Orientation Presets
+  const setCameraPreset = useCallback((preset: 'anterior' | 'posterior' | 'left' | 'right' | 'superior' | 'inferior') => {
+    if (!cameraRef.current || !controlsRef.current || !organGroupRef.current) return;
+    const center = organGroupRef.current.position.clone();
+    cameraLookAtRef.current = center;
+    const d = 0.95;
+
+    switch (preset) {
+      case 'anterior':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(0, 0.1, d));
+        break;
+      case 'posterior':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(0, 0.1, -d));
+        break;
+      case 'left':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(-d, 0.1, 0));
+        break;
+      case 'right':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(d, 0.1, 0));
+        break;
+      case 'superior':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(0, d, 0.01));
+        break;
+      case 'inferior':
+        cameraTargetPosRef.current = center.clone().add(new THREE.Vector3(0, -d, 0.01));
+        break;
+    }
+  }, []);
+
+  // Focus and Zoom onto selected Hotspot / Organ Part
   const focusHotspot = useCallback((hs: Hotspot) => {
     setActiveHotspot(hs);
     if (!cameraRef.current || !controlsRef.current || !organGroupRef.current) return;
 
     const [nx, ny, nz] = hs.normalizedPosition || [0, 0, 0];
     const organMesh = organGroupRef.current;
-    const target = new THREE.Vector3(nx * 0.22, ny * 0.22, nz * 0.22).applyMatrix4(organMesh.matrixWorld);
-    controlsRef.current.target.copy(target);
-    controlsRef.current.update();
-  }, []);
+    const hotspotLocal = new THREE.Vector3(nx * 0.26, ny * 0.26, nz * 0.26);
+    const hotspotWorld = hotspotLocal.clone().applyMatrix4(organMesh.matrixWorld);
+
+    // Set smooth camera target animation
+    cameraLookAtRef.current = hotspotWorld.clone();
+
+    // Zoom in closer facing the hotspot
+    const center = organMesh.position.clone();
+    const outwardDir = hotspotWorld.clone().sub(center).normalize();
+    if (outwardDir.lengthSq() < 0.001) outwardDir.set(0, 0, 1);
+
+    cameraTargetPosRef.current = hotspotWorld.clone().add(outwardDir.multiplyScalar(0.52));
+
+    // Optional audio narration
+    if (autoNarrate) {
+      speakText(`${hs.name}. ${hs.description || ''}`);
+    }
+  }, [autoNarrate]);
+
+  // Navigate between landmarks sequentially
+  const handlePrevHotspot = useCallback(() => {
+    if (!resolvedHotspots.length) return;
+    if (!activeHotspot) {
+      focusHotspot(resolvedHotspots[resolvedHotspots.length - 1]);
+      return;
+    }
+    const idx = resolvedHotspots.findIndex(h => h.id === activeHotspot.id);
+    const prevIdx = (idx - 1 + resolvedHotspots.length) % resolvedHotspots.length;
+    focusHotspot(resolvedHotspots[prevIdx]);
+  }, [activeHotspot, resolvedHotspots, focusHotspot]);
+
+  const handleNextHotspot = useCallback(() => {
+    if (!resolvedHotspots.length) return;
+    if (!activeHotspot) {
+      focusHotspot(resolvedHotspots[0]);
+      return;
+    }
+    const idx = resolvedHotspots.findIndex(h => h.id === activeHotspot.id);
+    const nextIdx = (idx + 1) % resolvedHotspots.length;
+    focusHotspot(resolvedHotspots[nextIdx]);
+  }, [activeHotspot, resolvedHotspots, focusHotspot]);
 
   const isHeart =
     organType === 'heart' &&
@@ -691,6 +958,19 @@ export function ModelViewer({
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
+          {/* 3D Viewer Settings HUD */}
+          <button
+            onClick={() => setShowSettings(s => !s)}
+            title="3D Anatomical Viewer Settings"
+            className={`p-1.5 sm:p-2 rounded-xl text-xs backdrop-blur-md border transition ${
+              showSettings
+                ? 'bg-teal-500 text-white border-teal-400 shadow-md shadow-teal-500/30'
+                : 'bg-white/5 text-gray-300 border-white/10 hover:text-white'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+          </button>
+
           {/* Reset Camera */}
           <button
             onClick={handleResetCamera}
@@ -710,6 +990,155 @@ export function ModelViewer({
           </button>
         </div>
       </div>
+
+      {/* ── 3D Viewer Settings Modal / HUD ─────────────────────────────────── */}
+      {showSettings && (
+        <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-[#081322]/95 border border-teal-500/40 rounded-2xl w-full max-w-sm sm:max-w-md p-4 sm:p-5 text-white shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-teal-400" />
+                <h3 className="text-xs sm:text-sm font-bold tracking-wide">3D Anatomical Viewer Settings</h3>
+              </div>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
+                aria-label="Close settings"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 1. Camera View Presets */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-300 flex items-center justify-between">
+                <span>Anatomical Camera Views</span>
+                <span className="text-[10px] text-teal-400 font-mono">Standard Planes</span>
+              </label>
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                {[
+                  { id: 'anterior', label: 'Anterior (Front)' },
+                  { id: 'posterior', label: 'Posterior (Back)' },
+                  { id: 'left', label: 'Left Lateral' },
+                  { id: 'right', label: 'Right Lateral' },
+                  { id: 'superior', label: 'Superior (Top)' },
+                  { id: 'inferior', label: 'Inferior (Base)' },
+                ].map(view => (
+                  <button
+                    key={view.id}
+                    onClick={() => {
+                      setCameraPreset(view.id as any);
+                      setShowSettings(false);
+                    }}
+                    className="p-1.5 sm:p-2 rounded-xl text-[11px] sm:text-xs font-medium bg-white/5 hover:bg-teal-500/20 text-gray-200 hover:text-white border border-white/10 hover:border-teal-400/40 transition active:scale-95 text-center truncate"
+                  >
+                    {view.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Highlight & Isolate Mode */}
+            <div className="space-y-2 pt-2 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-gray-200 block">Structure Isolation</span>
+                  <span className="text-[10px] text-gray-400">Dim other tissues so selected part stands out alone</span>
+                </div>
+                <button
+                  onClick={() => setIsolateMode(m => !m)}
+                  className={`w-11 h-6 rounded-full transition p-1 flex items-center shrink-0 ${
+                    isolateMode ? 'bg-teal-500 justify-end' : 'bg-gray-700 justify-start'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-gray-200 block">Auto-Narration</span>
+                  <span className="text-[10px] text-gray-400">Voice pronunciation when selecting landmarks</span>
+                </div>
+                <button
+                  onClick={() => setAutoNarrate(a => !a)}
+                  className={`w-11 h-6 rounded-full transition p-1 flex items-center shrink-0 ${
+                    autoNarrate ? 'bg-teal-500 justify-end' : 'bg-gray-700 justify-start'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Tissue Transparency */}
+            <div className="space-y-1.5 pt-2 border-t border-white/10">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-gray-200">Tissue Transparency</span>
+                <span className="font-mono text-teal-400 text-[11px]">{Math.round(tissueOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.15"
+                max="1.0"
+                step="0.05"
+                value={tissueOpacity}
+                onChange={e => setTissueOpacity(parseFloat(e.target.value))}
+                className="w-full accent-teal-400 bg-gray-700 rounded-lg h-2 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400">
+                <span>Translucent (X-Ray)</span>
+                <span>Opaque (Solid)</span>
+              </div>
+            </div>
+
+            {/* 4. Rotation Speed */}
+            <div className="space-y-1.5 pt-2 border-t border-white/10">
+              <span className="text-xs font-semibold text-gray-200 block">Turntable Rotation Speed</span>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { speed: 0, label: 'Pause' },
+                  { speed: 0.5, label: '0.5x' },
+                  { speed: 1.0, label: '1.0x' },
+                  { speed: 2.0, label: '2.0x' },
+                ].map(r => (
+                  <button
+                    key={r.speed}
+                    onClick={() => {
+                      setRotationSpeed(r.speed);
+                      if (r.speed === 0) setAutoRotate(false);
+                      else setAutoRotate(true);
+                    }}
+                    className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition ${
+                      rotationSpeed === r.speed && (r.speed === 0 || autoRotate)
+                        ? 'bg-teal-500 text-white shadow-sm shadow-teal-500/30'
+                        : 'bg-white/5 text-gray-300 hover:bg-white/10'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 5. Physiological Pulse */}
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <div>
+                <span className="text-xs font-semibold text-gray-200 block">Physiological Contraction</span>
+                <span className="text-[10px] text-gray-400">Biological organ hemodynamics & movement</span>
+              </div>
+              <button
+                onClick={() => setMotionActive(m => !m)}
+                className={`w-11 h-6 rounded-full transition p-1 flex items-center shrink-0 ${
+                  motionActive ? 'bg-teal-500 justify-end' : 'bg-gray-700 justify-start'
+                }`}
+              >
+                <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 3D Canvas (Touch Action None for Smooth Mobile Manipulation) ───── */}
       <canvas
@@ -761,8 +1190,9 @@ export function ModelViewer({
                   </div>
                 </div>
 
-                {(isSelected || isHovered) && (
-                  <div className="bg-[#0A1626]/95 backdrop-blur-md px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-teal-400/40 text-white text-[10px] sm:text-[11px] font-semibold tracking-wide whitespace-nowrap shadow-xl flex items-center gap-1 animate-in fade-in zoom-in-95 duration-150">
+                {/* Desktop hover badge: on mobile, details appear cleanly in the bottom card without cluttering */}
+                {isHovered && (
+                  <div className="hidden md:flex bg-[#0A1626]/95 backdrop-blur-md px-2.5 py-1 rounded-lg border border-teal-400/40 text-white text-[11px] font-semibold tracking-wide whitespace-nowrap shadow-xl items-center gap-1 animate-in fade-in zoom-in-95 duration-150">
                     <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
                     <span>{hs.name}</span>
                   </div>
@@ -910,24 +1340,64 @@ export function ModelViewer({
 
       {/* ── Active Landmark Detail Card (Responsive Floating Pill) ────────── */}
       {activeHotspot && (
-        <div className="absolute bottom-16 sm:bottom-20 inset-x-3 sm:inset-x-6 sm:w-96 max-w-lg bg-[#060D18]/95 backdrop-blur-2xl border border-teal-500/40 rounded-2xl p-4 shadow-2xl text-white z-20 animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="absolute bottom-16 sm:bottom-20 inset-x-3 sm:inset-x-6 sm:w-96 max-w-lg bg-[#060D18]/95 backdrop-blur-2xl border border-teal-500/40 rounded-2xl p-3.5 sm:p-4 shadow-2xl text-white z-20 animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-bold text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Info className="w-3 h-3" />
+              <Sparkles className="w-3 h-3 text-teal-400" />
               {activeHotspot.system || 'Anatomical Structure'}
             </span>
-            <button
-              onClick={() => setActiveHotspot(null)}
-              className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
-              aria-label="Dismiss detail"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Prev Landmark */}
+              <button
+                onClick={handlePrevHotspot}
+                title="Previous Landmark"
+                className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition active:scale-90"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {/* Next Landmark */}
+              <button
+                onClick={handleNextHotspot}
+                title="Next Landmark"
+                className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition active:scale-90"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              {/* Listen to narration */}
+              <button
+                onClick={() => speakText(`${activeHotspot.name}. ${activeHotspot.description || ''} ${activeHotspot.clinicalFunction || ''}`)}
+                title="Listen (Audio Narration)"
+                className="p-1 text-teal-300 hover:text-white rounded-lg hover:bg-white/10 transition active:scale-90"
+              >
+                <Volume2 className="w-4 h-4" />
+              </button>
+              {/* Re-focus 3D Camera */}
+              <button
+                onClick={() => focusHotspot(activeHotspot)}
+                title="Re-focus Camera"
+                className="p-1 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition active:scale-90"
+              >
+                <Crosshair className="w-4 h-4" />
+              </button>
+              {/* Close */}
+              <button
+                onClick={() => setActiveHotspot(null)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition ml-1"
+                aria-label="Dismiss detail"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          <h4 className="text-sm sm:text-base font-extrabold text-white leading-snug">
-            {activeHotspot.name}
-          </h4>
+          <div className="flex items-start justify-between gap-2">
+            <h4 className="text-sm sm:text-base font-extrabold text-white leading-snug">
+              {activeHotspot.name}
+            </h4>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-400/30 shrink-0">
+              {resolvedHotspots.findIndex(h => h.id === activeHotspot.id) + 1} / {resolvedHotspots.length}
+            </span>
+          </div>
 
           {activeHotspot.description && (
             <p className="text-[11px] sm:text-xs text-gray-300 mt-1.5 leading-relaxed">
@@ -936,7 +1406,7 @@ export function ModelViewer({
           )}
 
           {activeHotspot.clinicalFunction && (
-            <div className="mt-2 bg-teal-950/60 border border-teal-500/30 rounded-xl p-2.5 text-xs">
+            <div className="mt-2.5 bg-teal-950/60 border border-teal-500/30 rounded-xl p-2.5 text-xs">
               <strong className="text-teal-300 text-[10px] font-bold uppercase tracking-wider block mb-0.5">
                 Clinical Significance
               </strong>
