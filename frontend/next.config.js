@@ -9,6 +9,13 @@ const nextConfig = {
       { protocol: 'http', hostname: 'localhost' },
     ],
   },
+  // Deduplicate Three.js — resolve to the local frontend node_modules copy
+  webpack(config) {
+    const path = require('path');
+    // Force all 'three' imports to resolve to the same instance
+    config.resolve.alias['three'] = path.resolve(__dirname, 'node_modules/three');
+    return config;
+  },
   async headers() {
     return [
       {

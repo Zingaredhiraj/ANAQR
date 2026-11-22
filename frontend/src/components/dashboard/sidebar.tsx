@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useEffect, useCallback, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -20,6 +21,7 @@ import {
   LogOut,
   User,
 } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 
 interface NavItem {
   label: string;
@@ -55,13 +57,22 @@ const studentNav: NavItem[] = [
 
 interface SidebarProps {
   role: 'SUPER_ADMIN' | 'FACULTY' | 'STUDENT';
-  user: { name?: string; email: string; role: string; studentProfile?: { firstName?: string; lastName?: string }; facultyProfile?: { firstName?: string; lastName?: string } };
+  user: {
+    name?: string;
+    email: string;
+    role: string;
+    studentProfile?: { firstName?: string; lastName?: string };
+    facultyProfile?: { firstName?: string; lastName?: string };
+  };
   collapsed: boolean;
   onCollapse: () => void;
 }
 
 export function Sidebar({ role, user, collapsed, onCollapse }: SidebarProps) {
   const pathname = usePathname();
+  const { logout, logoutPending } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const displayName =
     user.name ??
     (user.facultyProfile?.firstName
@@ -73,11 +84,7 @@ export function Sidebar({ role, user, collapsed, onCollapse }: SidebarProps) {
     user.email.split('@')[0];
 
   const navItems =
-    role === 'SUPER_ADMIN'
-      ? adminNav
-      : role === 'FACULTY'
-      ? facultyNav
-      : studentNav;
+    role === 'SUPER_ADMIN' ? adminNav : role === 'FACULTY' ? facultyNav : studentNav;
 
   const isActive = (href: string) => {
     if (href === '/admin' || href === '/faculty' || href === '/student') {
@@ -85,6 +92,32 @@ export function Sidebar({ role, user, collapsed, onCollapse }: SidebarProps) {
     }
     return pathname.startsWith(href);
   };
+
+  const handleLogout = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (isLoggingOut) return;
+      setIsLoggingOut(true);
+      try {
+        // Clear tokens immediately so middleware doesn't bounce
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure';
+          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure';
+        }
+        logout();
+        // Hard redirect ensures page and query cache are fully wiped
+        window.location.href = '/login';
+      } catch {
+        setIsLoggingOut(false);
+        window.location.href = '/login';
+      }
+    },
+    [logout, isLoggingOut],
+  );
 
   return (
     <aside
@@ -162,16 +195,23 @@ export function Sidebar({ role, user, collapsed, onCollapse }: SidebarProps) {
             </div>
           )}
         </div>
-        <Link
-          href="/login"
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-white/70 hover:bg-red-500/20 hover:text-red-300 transition-colors ${
+
+        {/* Proper Logout Button — NOT a Link to /login */}
+        <button
+          onClick={handleLogout}
+          disabled={isLoggingOut || logoutPending}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
             collapsed ? 'justify-center' : ''
-          }`}
+          } text-white/70 hover:bg-red-500/20 hover:text-red-300 cursor-pointer`}
           title={collapsed ? 'Logout' : undefined}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Logout</span>}
-        </Link>
+          <LogOut className={`w-4 h-4 flex-shrink-0 ${isLoggingOut ? 'animate-spin' : ''}`} />
+          {!collapsed && (
+            <span className="text-sm font-medium">
+              {isLoggingOut ? 'Signing out...' : 'Logout'}
+            </span>
+          )}
+        </button>
       </div>
     </aside>
   );

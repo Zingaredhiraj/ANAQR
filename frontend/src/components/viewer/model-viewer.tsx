@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import * as THREE from 'three';
+// Three.js is imported dynamically inside useEffect to prevent SSR issues and deduplicate instances
 import {
   Eye,
   Layers,
@@ -297,6 +297,8 @@ export function ModelViewer({
     async function init() {
       try {
         THREE = await import('three');
+        // Cache on window so focusHotspot callback can access without re-importing
+        (window as any).__THREE__ = THREE;
         const { OrbitControls: OC } = await import('three/examples/jsm/controls/OrbitControls.js');
         OrbitControls = OC;
 
@@ -614,11 +616,13 @@ export function ModelViewer({
 
     const [nx, ny, nz] = hs.normalizedPosition || [0, 0, 0];
     const organMesh = organGroupRef.current;
-    const target = new THREE.Vector3(nx * 0.22, ny * 0.22, nz * 0.22).applyMatrix4(organMesh.matrixWorld);
-
-    // Smoothly nudge controls target toward hotspot
-    controlsRef.current.target.copy(target);
-    controlsRef.current.update();
+    // Use the THREE ref stored after dynamic import
+    const threeRef = (window as any).__THREE__;
+    if (threeRef) {
+      const target = new threeRef.Vector3(nx * 0.22, ny * 0.22, nz * 0.22).applyMatrix4(organMesh.matrixWorld);
+      controlsRef.current.target.copy(target);
+      controlsRef.current.update();
+    }
   }, []);
 
   return (

@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { useAuth } from '@/hooks/use-auth';
 import { PageSkeleton } from '@/components/ui/loading-skeleton';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const { user, isLoading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 

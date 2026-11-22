@@ -115,22 +115,32 @@ export function useAuth() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      try {
-        await authApi.logout();
-      } catch {
-        // continue logout even if backend is unreachable
-      }
+      // Clear all tokens immediately — don't wait for the backend
       if (typeof window !== 'undefined') {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-        document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // Clear cookies for all SameSite variants
+        const cookiePaths = [
+          'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+          'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax',
+          'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure',
+          'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure',
+        ];
+        cookiePaths.forEach((c) => { document.cookie = c; });
       }
+      // Fire-and-forget backend logout; never block the UI on this
+      authApi.logout().catch(() => {});
     },
     onSuccess: () => {
       queryClient.clear();
-      window.location.href = '/login';
+      queryClient.removeQueries();
       toast.info('You have been logged out.');
+      window.location.href = '/login';
+    },
+    onError: () => {
+      // Even on error, still redirect to login
+      queryClient.clear();
+      window.location.href = '/login';
     },
   });
 
