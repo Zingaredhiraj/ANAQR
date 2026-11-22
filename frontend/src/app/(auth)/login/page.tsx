@@ -98,19 +98,6 @@ export default function LoginPage() {
     }
   };
 
-  const setDemoCredentials = (role: 'admin' | 'faculty' | 'student') => {
-    if (role === 'admin') {
-      setValue('email', 'admin@anatoscan.edu');
-      setValue('password', 'Admin@AnatoScan2024!');
-    } else if (role === 'faculty') {
-      setValue('email', 'dr.sharma@anatoscan.edu');
-      setValue('password', 'Faculty@2024!');
-    } else {
-      setValue('email', 'student@anatoscan.edu');
-      setValue('password', 'Student@2024!');
-    }
-  };
-
   return (
     <div className="bg-white rounded-2xl p-6 md:p-8 shadow-2xl border border-gray-100">
       <div className="mb-6">
@@ -181,36 +168,6 @@ export default function LoginPage() {
           {!loginPending && <ArrowRight className="w-4 h-4" />}
         </button>
       </form>
-
-      {/* Demo Quick-Fill */}
-      <div className="mt-6 pt-5 border-t border-gray-100">
-        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">
-          Demo Logins — Click to autofill
-        </span>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => setDemoCredentials('admin')}
-            className="text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
-          >
-            Admin
-          </button>
-          <button
-            type="button"
-            onClick={() => setDemoCredentials('faculty')}
-            className="text-[11px] font-semibold bg-teal-50 hover:bg-teal-100 text-teal-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
-          >
-            Faculty
-          </button>
-          <button
-            type="button"
-            onClick={() => setDemoCredentials('student')}
-            className="text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-800 py-1.5 px-2 rounded-lg transition cursor-pointer"
-          >
-            Student
-          </button>
-        </div>
-      </div>
 
       <div className="mt-5 text-center">
         <p className="text-xs text-gray-500">
