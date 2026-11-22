@@ -18,7 +18,7 @@ RUN pnpm --filter @anatoscan/shared build
 RUN cd backend && pnpm prisma generate
 RUN pnpm --filter backend build
 RUN pnpm --filter backend deploy --prod /prod/backend
-RUN cd /prod/backend && npx prisma generate
+RUN cp -r /app/node_modules/.pnpm/@prisma+client* /prod/backend/node_modules/.pnpm/
 
 # Stage 3: Production Runner
 FROM node:20-alpine AS runner
