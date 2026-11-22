@@ -44,28 +44,29 @@ export default async function QRLandingPage({ params }: PageProps) {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Specimen Bar for QR Scanners */}
-      <header className="bg-navy-950 text-white px-4 py-3 flex items-center justify-between border-b border-navy-800 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+      <header className="bg-navy-950/95 backdrop-blur-md text-white px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between border-b border-navy-800/80 sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href="/"
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition"
+            className="flex items-center gap-1 text-xs text-gray-300 hover:text-white transition py-1 px-1.5 rounded-md hover:bg-white/5 active:scale-95"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Portal</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span className="font-medium">Portal</span>
           </Link>
-          <span className="text-gray-700">|</span>
-          <div className="flex items-center gap-1.5 text-teal-400 font-bold text-sm">
-            <QrCode className="w-4 h-4" />
-            <span>AnatoScan AR</span>
+          <span className="text-navy-700">|</span>
+          <div className="flex items-center gap-1.5 text-teal-400 font-bold text-xs sm:text-sm">
+            <QrCode className="w-4 h-4 text-teal-400" />
+            <span className="tracking-tight">AnatoScan AR</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Link
             href="/scan"
-            className="text-xs bg-navy-800 hover:bg-navy-700 text-gray-200 px-3 py-1.5 rounded-lg border border-navy-700 transition"
+            className="text-xs font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 px-3 py-1.5 rounded-lg border border-teal-500/30 transition active:scale-95 flex items-center gap-1"
           >
-            Scan
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Scan</span>
           </Link>
         </div>
       </header>
