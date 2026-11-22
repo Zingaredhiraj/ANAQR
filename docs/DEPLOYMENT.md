@@ -42,33 +42,46 @@ docker compose -f docker/docker-compose.prod.yml up --build -d
   - `NEXT_PUBLIC_API_URL=https://anatoscan-api.onrender.com/api/v1` (replace with your Render backend URL)
   - `NEXT_PUBLIC_APP_URL=https://<your-project>.vercel.app`
 
-### 3. Backend on Render (1-Click Blueprint or Manual)
+## Render Deployment (Backend & Frontend Web Services)
 
-#### Option A: Using the included `render.yaml` Blueprint
+### 1. Blueprint Deployment (1-Click)
 1. Push your repository to GitHub.
-2. In Render, click **New +** -> **Blueprint**.
-3. Connect your repository. Render automatically reads `render.yaml` and provisions:
-   - PostgreSQL 16 database (`anatoscan-postgres`)
-   - Redis 7 instance (`anatoscan-redis`)
-   - Dockerized NestJS API (`anatoscan-api`) with healthcheck at `/api/v1/health` and auto-generated secrets.
+2. In Render Dashboard, click **New +** -> **Blueprint**.
+3. Select your repository `Zingaredhiraj/ANAQR`.
+4. Render reads `render.yaml` and provisions:
+   - **anatoscan-backend** (NestJS Web Service using `docker/Dockerfile.api`)
+   - **anatoscan-frontend** (Next.js Web Service using `docker/Dockerfile.web`)
+   - **anatoscan-postgres** (PostgreSQL 16)
+   - **anatoscan-redis** (Redis 7)
+5. Click **Apply**.
 
-#### Option B: Manual Setup on Render
-1. Create a **PostgreSQL** database on Render.
-2. Create a **Redis** instance on Render.
-3. Create a **Web Service**:
-   - Environment: `Docker`
-   - Dockerfile path: `docker/Dockerfile.api`
-   - Docker Context: `.`
-   - Health Check Path: `/api/v1/health`
-   - Port: `10000` (detected automatically from `PORT` env)
-   - Environment variables:
-     - `DATABASE_URL`: Connection string from your Render Postgres
-     - `REDIS_URL`: Connection string from your Render Redis
-     - `JWT_SECRET`: Random 32+ character string
-     - `JWT_REFRESH_SECRET`: Random 32+ character string
-     - `CORS_ORIGINS`: `https://*.vercel.app,https://<your-custom-domain>`
-4. Run migrations in the Render Web Service Shell:
-   ```bash
-   npx prisma migrate deploy
-   pnpm prisma:seed
-   ```
+### 2. Manual Render Web Services Setup
+
+#### A. Backend Web Service
+- **Name**: `anatoscan-backend`
+- **Environment**: `Docker`
+- **Dockerfile Path**: `docker/Dockerfile.api`
+- **Docker Context**: `.`
+- **Health Check Path**: `/api/v1/health`
+- **Environment Variables**:
+  - `DATABASE_URL`: Your Render Postgres internal connection URL
+  - `REDIS_URL`: Your Render Redis internal connection URL
+  - `JWT_SECRET`: Random 32+ character string
+  - `JWT_REFRESH_SECRET`: Random 32+ character string
+  - `CORS_ORIGINS`: `*` (or your frontend Render URL)
+
+#### B. Frontend Web Service
+- **Name**: `anatoscan-frontend`
+- **Environment**: `Docker`
+- **Dockerfile Path**: `docker/Dockerfile.web`
+- **Docker Context**: `.`
+- **Environment Variables**:
+  - `NEXT_PUBLIC_API_URL`: `https://anatoscan-backend.onrender.com/api/v1`
+  - `NEXT_PUBLIC_APP_URL`: `https://anatoscan-frontend.onrender.com`
+
+#### Database Setup
+In the Render Web Service Shell for `anatoscan-backend`, run:
+```bash
+npx prisma migrate deploy
+pnpm prisma:seed
+```

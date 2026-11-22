@@ -1,10 +1,11 @@
-# Render Blueprint for AnatoScan AR (AnaQR) Backend
+# Render Blueprint for AnatoScan AR (AnaQR)
+# Deploys both Backend API and Frontend Web App as Render Web Services
 # https://render.com/docs/blueprint-spec
 
 services:
-  # NestJS API Service
+  # ─── 1. Backend Web Service (NestJS API) ───────────────────────────
   - type: web
-    name: anatoscan-api
+    name: anatoscan-backend
     runtime: docker
     dockerfilePath: docker/Dockerfile.api
     dockerContext: .
@@ -28,9 +29,29 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://*.vercel.app,http://localhost:3000
+        value: "*"
 
-  # Managed Redis for Telemetry, BullMQ & Rate Limiting
+  # ─── 2. Frontend Web Service (Next.js 15) ──────────────────────────
+  - type: web
+    name: anatoscan-frontend
+    runtime: docker
+    dockerfilePath: docker/Dockerfile.web
+    dockerContext: .
+    plan: starter
+    region: oregon
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: anatoscan-backend
+          property: host
+          envVarKey: NEXT_PUBLIC_API_URL
+      - key: NEXT_PUBLIC_APP_URL
+        value: "https://anatoscan-frontend.onrender.com"
+
+  # ─── 3. Managed Redis (BullMQ, Caching & Telemetry) ────────────────
   - type: redis
     name: anatoscan-redis
     plan: starter
@@ -39,7 +60,7 @@ services:
     ipAllowList: []
 
 databases:
-  # Managed PostgreSQL 16
+  # ─── 4. Managed PostgreSQL 16 ──────────────────────────────────────
   - name: anatoscan-postgres
     databaseName: anatoscan_db
     user: anatoscan

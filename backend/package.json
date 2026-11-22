@@ -1,5 +1,5 @@
 {
-  "name": "api",
+  "name": "backend",
   "version": "1.0.0",
   "description": "AnatoScan AR – NestJS Backend API",
   "main": "dist/main.js",
