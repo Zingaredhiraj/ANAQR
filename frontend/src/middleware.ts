@@ -41,7 +41,15 @@ const ROLE_HOME: Record<JwtClaims['role'], string> = {
 };
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
+
+  // If ?logout=true is passed, FORCE delete cookies on response and permit access to /login
+  if (searchParams.get('logout') === 'true') {
+    const response = NextResponse.next();
+    response.cookies.delete('access_token');
+    response.cookies.delete('refresh_token');
+    return response;
+  }
 
   const tokenCookie = request.cookies.get('access_token');
   const claims = tokenCookie?.value ? decodeJwtPayload(tokenCookie.value) : null;

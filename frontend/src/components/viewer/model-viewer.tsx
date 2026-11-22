@@ -182,6 +182,7 @@ export function ModelViewer({
   const animFrameRef = useRef<number>(0);
   const organGroupRef = useRef<any>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const threeRef = useRef<any>(null);
 
   // States
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
@@ -297,8 +298,7 @@ export function ModelViewer({
     async function init() {
       try {
         THREE = await import('three');
-        // Cache on window so focusHotspot callback can access without re-importing
-        (window as any).__THREE__ = THREE;
+        threeRef.current = THREE;
         const { OrbitControls: OC } = await import('three/examples/jsm/controls/OrbitControls.js');
         OrbitControls = OC;
 
@@ -616,10 +616,9 @@ export function ModelViewer({
 
     const [nx, ny, nz] = hs.normalizedPosition || [0, 0, 0];
     const organMesh = organGroupRef.current;
-    // Use the THREE ref stored after dynamic import
-    const threeRef = (window as any).__THREE__;
-    if (threeRef) {
-      const target = new threeRef.Vector3(nx * 0.22, ny * 0.22, nz * 0.22).applyMatrix4(organMesh.matrixWorld);
+    const mod = threeRef.current;
+    if (mod) {
+      const target = new mod.Vector3(nx * 0.22, ny * 0.22, nz * 0.22).applyMatrix4(organMesh.matrixWorld);
       controlsRef.current.target.copy(target);
       controlsRef.current.update();
     }

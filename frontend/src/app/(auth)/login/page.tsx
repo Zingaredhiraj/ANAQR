@@ -20,8 +20,17 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
-  // If already logged in, redirect directly to user's dashboard
+  // If already logged in, redirect directly to user's dashboard (unless explicitly logging out)
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get('logout') === 'true') {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        return;
+      }
+    }
+
     if (user) {
       let target = '/';
       if (user.role === 'SUPER_ADMIN') target = '/admin';

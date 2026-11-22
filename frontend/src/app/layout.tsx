@@ -33,14 +33,6 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable} data-scroll-behavior="smooth" suppressHydrationWarning>
-      <head>
-        {/* Google Model Viewer for 3D/AR */}
-        <script
-          type="module"
-          src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"
-          async
-        />
-      </head>
       <body className="min-h-screen bg-brand-bg font-sans antialiased">
         <Providers>{children}</Providers>
         <Toaster

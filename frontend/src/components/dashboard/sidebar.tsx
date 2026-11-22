@@ -99,21 +99,29 @@ export function Sidebar({ role, user, collapsed, onCollapse }: SidebarProps) {
       if (isLoggingOut) return;
       setIsLoggingOut(true);
       try {
-        // Clear tokens immediately so middleware doesn't bounce
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure';
-          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=None; Secure';
+
+          // Deep-clear cookies across all potential attribute variations
+          const cookieNames = ['access_token', 'refresh_token'];
+          const sameSites = ['Lax', 'None', 'Strict', ''];
+          for (const name of cookieNames) {
+            for (const ss of sameSites) {
+              const ssPart = ss ? `; SameSite=${ss}` : '';
+              document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${ssPart}; Secure`;
+              document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT${ssPart}`;
+              document.cookie = `${name}=; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+            }
+          }
         }
+        // Notify backend & queryClient
         logout();
-        // Hard redirect ensures page and query cache are fully wiped
-        window.location.href = '/login';
       } catch {
-        setIsLoggingOut(false);
-        window.location.href = '/login';
+        // Continue even if network error
+      } finally {
+        // Hard navigate with logout=true to trigger middleware and login page session drop
+        window.location.href = '/login?logout=true';
       }
     },
     [logout, isLoggingOut],
