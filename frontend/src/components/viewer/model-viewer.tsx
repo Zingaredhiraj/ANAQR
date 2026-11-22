@@ -245,12 +245,83 @@ export function ModelViewer({
     }
   }, []);
 
-  // Retrieve standardized anatomical landmarks
+  // Retrieve standardized anatomical landmarks and ensure accurate 3D positions
   const resolvedHotspots: Hotspot[] = useMemo(() => {
-    if (hotspots && hotspots.length > 0) return hotspots;
-    const std = getOrganHotspots(organType);
-    if (std && std.length > 0) {
-      return std.map(s => ({
+    const stdHotspots = getOrganHotspots(organType);
+
+    // Anatomical coordinate mapping for organ structures
+    const anatomicalCoordinates: Record<string, [number, number, number]> = {
+      'right atrium': [0.32, 0.18, 0.04],
+      'left atrium': [-0.15, 0.22, -0.14],
+      'right ventricle': [0.18, -0.12, 0.26],
+      'left ventricle': [-0.28, -0.26, 0.16],
+      'mitral valve': [-0.14, 0.08, 0.12],
+      'bicuspid valve': [-0.14, 0.08, 0.12],
+      'aortic valve': [-0.02, 0.20, 0.06],
+      'aorta': [0.08, 0.48, 0.02],
+      'aortic arch': [0.08, 0.48, 0.02],
+      'pulmonary trunk': [-0.14, 0.32, 0.22],
+      'pulmonary artery': [-0.14, 0.32, 0.22],
+      'superior vena cava': [0.26, 0.52, -0.08],
+      'inferior vena cava': [0.24, -0.22, -0.06],
+      'cardiac apex': [-0.22, -0.48, 0.14],
+      'apex': [-0.22, -0.48, 0.14],
+      'coronary artery': [-0.06, -0.05, 0.36],
+      'lad': [-0.06, -0.05, 0.36],
+    };
+
+    if (hotspots && hotspots.length > 0) {
+      return hotspots.map((hs, idx) => {
+        // If already has normalizedPosition, keep it
+        if (hs.normalizedPosition && hs.normalizedPosition.length === 3) {
+          return hs;
+        }
+
+        const nameLower = (hs.name || '').toLowerCase();
+
+        // 1. Direct coordinate lookup by structure name
+        for (const [key, coords] of Object.entries(anatomicalCoordinates)) {
+          if (nameLower.includes(key)) {
+            return {
+              ...hs,
+              normalizedPosition: coords,
+            };
+          }
+        }
+
+        // 2. Lookup in standard library hotspots
+        const matchedStd = stdHotspots.find(
+          s => s.name.toLowerCase().includes(nameLower) || nameLower.includes(s.name.toLowerCase())
+        );
+        if (matchedStd && matchedStd.normalizedPosition) {
+          return {
+            ...hs,
+            normalizedPosition: matchedStd.normalizedPosition,
+            clinicalFunction: hs.clinicalFunction || matchedStd.clinicalFunction,
+            system: hs.system || matchedStd.system,
+          };
+        }
+
+        // 3. Guaranteed distinct spherical distribution so pins never stack
+        const count = hotspots.length || 8;
+        const phi = Math.acos(1 - 2 * (idx + 0.5) / count);
+        const theta = Math.PI * (1 + Math.sqrt(5)) * (idx + 0.5);
+        const r = 0.34;
+        const fallbackPos: [number, number, number] = [
+          parseFloat((Math.sin(phi) * Math.cos(theta) * r).toFixed(3)),
+          parseFloat((Math.cos(phi) * r).toFixed(3)),
+          parseFloat((Math.sin(phi) * Math.sin(theta) * r).toFixed(3)),
+        ];
+
+        return {
+          ...hs,
+          normalizedPosition: fallbackPos,
+        };
+      });
+    }
+
+    if (stdHotspots && stdHotspots.length > 0) {
+      return stdHotspots.map(s => ({
         id: s.id,
         name: s.name,
         description: s.description,
@@ -259,6 +330,7 @@ export function ModelViewer({
         normalizedPosition: s.normalizedPosition,
       }));
     }
+
     return [
       { id: 'hs-1', name: `${safeOrganName} — Anterior Aspect`, description: 'Principal anterior-facing architectural boundary.', clinicalFunction: 'Anterior surgical access window.', system: 'Anatomical Landmark', normalizedPosition: [0, 0.2, 0.4] },
       { id: 'hs-2', name: 'Primary Vascular Pedicle', description: 'Major inflow arterial supply and venous drainage plexus.', clinicalFunction: 'Vascular clamping & ligation zone.', system: 'Cardiovascular (Arterial)', normalizedPosition: [0.15, 0.4, 0.1] },
@@ -420,6 +492,13 @@ export function ModelViewer({
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material = child.material.map((m: any) => m.clone());
+              } else {
+                child.material = child.material.clone();
+              }
+            }
           }
         });
 
@@ -556,9 +635,9 @@ export function ModelViewer({
                 child.isMesh &&
                 child.material &&
                 child.material.emissive &&
-                child.material.emissive.getHex() === 0x00e5ff
+                child.material.emissive.getHex() === 0x00d2ff
               ) {
-                child.material.emissiveIntensity = 1.0 + 0.45 * Math.sin(elapsed * 5.5);
+                child.material.emissiveIntensity = 0.35 + 0.15 * Math.sin(elapsed * 4.0);
               }
             });
           }
@@ -709,58 +788,58 @@ export function ModelViewer({
           child.material.opacity = xrayMode ? 0.22 : tissueOpacity;
           child.material.needsUpdate = true;
         } else {
-          // Determine if this mesh corresponds to the selected anatomical part
-          const hsId = activeHotspot.id.toLowerCase();
+          // Precise anatomical structure matching
           const meshName = (child.name || '').toLowerCase();
+          const hsName = (activeHotspot.name || '').toLowerCase();
+          const hsId = (activeHotspot.id || '').toLowerCase();
 
-          // Calculate center and distance
-          if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
-          const meshCenter = new THREE.Vector3();
-          child.geometry.boundingBox.getCenter(meshCenter);
-          meshCenter.applyMatrix4(child.matrix);
+          let isSelectedPart = false;
 
-          const [nx, ny, nz] = activeHotspot.normalizedPosition || [0, 0, 0];
-          const hsPos = new THREE.Vector3(nx * 0.26, ny * 0.26, nz * 0.26);
-          const dist = meshCenter.distanceTo(hsPos);
-
-          const isNamedMatch = meshName && (
-            meshName.includes(hsId) ||
-            hsId.includes(meshName) ||
-            (hsId.includes('atrium') && meshName.includes('atrium')) ||
-            (hsId.includes('ventricle') && meshName.includes('ventricle')) ||
-            (hsId.includes('aorta') && meshName.includes('aorta')) ||
-            (hsId.includes('pulmonary') && meshName.includes('pulmonary')) ||
-            (hsId.includes('vena_cava') && meshName.includes('vena_cava')) ||
-            (hsId.includes('coronary') && meshName.includes('coronary')) ||
-            (hsId.includes('apex') && meshName.includes('left_ventricle'))
-          );
-
-          const isProximityMatch = dist < 0.12;
-          const isSelectedPart = isNamedMatch || isProximityMatch;
+          if (hsName.includes('left ventricle')) {
+            isSelectedPart = meshName === 'left_ventricle';
+          } else if (hsName.includes('right ventricle')) {
+            isSelectedPart = meshName === 'right_ventricle';
+          } else if (hsName.includes('left atrium')) {
+            isSelectedPart = meshName === 'left_atrium';
+          } else if (hsName.includes('right atrium')) {
+            isSelectedPart = meshName === 'right_atrium';
+          } else if (hsName.includes('aorta') || hsName.includes('aortic')) {
+            isSelectedPart = meshName === 'aortic_arch';
+          } else if (hsName.includes('pulmonary')) {
+            isSelectedPart = meshName === 'pulmonary_trunk';
+          } else if (hsName.includes('mitral')) {
+            isSelectedPart = meshName === 'left_atrium' || meshName === 'left_ventricle';
+          } else if (hsName.includes('vena cava') || hsName.includes('svc') || hsName.includes('ivc')) {
+            isSelectedPart = meshName === 'superior_vena_cava';
+          } else if (hsName.includes('apex')) {
+            isSelectedPart = meshName === 'left_ventricle';
+          } else if (meshName) {
+            isSelectedPart = meshName.includes(hsId) || hsId.includes(meshName);
+          }
 
           if (isSelectedPart) {
-            // Emissive Glowing Neon Surgical Highlight
+            // Refined anatomical cyan accent contour (never bleaches out red myocardial tissue)
             if (child.material.emissive) {
-              child.material.emissive.setHex(0x00e5ff); // Vivid Medical Cyan
-              child.material.emissiveIntensity = 1.25;
+              child.material.emissive.setHex(0x00d2ff);
+              child.material.emissiveIntensity = 0.38;
             }
             child.material.opacity = 1.0;
             child.material.transparent = false;
             child.material.needsUpdate = true;
           } else {
-            // Dim or Isolate surrounding organ tissues
+            // Semi-translucent contrast for surrounding structures
             if (isolateMode) {
               child.material.transparent = true;
-              child.material.opacity = 0.22; // Dimmed so the selected part stands out alone
+              child.material.opacity = 0.32;
               if (child.material.emissive) {
                 child.material.emissiveIntensity = 0;
               }
             } else {
               child.material.transparent = xrayMode;
-              child.material.opacity = xrayMode ? 0.22 : 0.65;
+              child.material.opacity = xrayMode ? 0.22 : 0.85;
               if (child.material.emissive) {
                 child.material.emissive.setHex(orig.emissiveHex);
-                child.material.emissiveIntensity = orig.emissiveIntensity * 0.3;
+                child.material.emissiveIntensity = orig.emissiveIntensity * 0.5;
               }
             }
             child.material.needsUpdate = true;
@@ -825,7 +904,8 @@ export function ModelViewer({
     const outwardDir = hotspotWorld.clone().sub(center).normalize();
     if (outwardDir.lengthSq() < 0.001) outwardDir.set(0, 0, 1);
 
-    cameraTargetPosRef.current = hotspotWorld.clone().add(outwardDir.multiplyScalar(0.52));
+    // Zoom in comfortably facing the hotspot, keeping the whole organ in frame without clipping
+    cameraTargetPosRef.current = hotspotWorld.clone().add(outwardDir.multiplyScalar(0.84));
 
     // Optional audio narration
     if (autoNarrate) {

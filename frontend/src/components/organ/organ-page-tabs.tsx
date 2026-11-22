@@ -211,11 +211,12 @@ export function OrganPageTabs({ organ }: OrganPageTabsProps) {
             systemName={organ.anatomicalSystem?.name || organ.system?.name}
             slug={organ.slug}
             description={organ.description}
-            hotspots={organ.structures?.map((s: any, idx: number) => ({
+            hotspots={organ.structures?.map((s: any) => ({
               id: s.id,
               name: s.name,
-              position: `${(idx % 3) * 0.2 - 0.2}m ${0.5 + idx * 0.1}m 0.2m`,
               description: s.description,
+              clinicalFunction: s.clinicalFunction,
+              system: s.system,
             }))}
           />
         </Tabs.Content>
