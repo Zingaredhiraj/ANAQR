@@ -32,5 +32,6 @@ COPY --from=builder /app/backend/prisma ./prisma
 COPY --from=builder /app/backend/package.json ./package.json
 
 USER nestjs
-EXPOSE 4000
+ENV PORT=10000
+EXPOSE 10000
 CMD ["node", "dist/main.js"]

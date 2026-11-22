@@ -69,7 +69,9 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // ── Global prefix & versioning ────────────────────────────────────
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', {
+    exclude: ['/', 'health'],
+  });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   // ── Global pipes & filters ────────────────────────────────────────
