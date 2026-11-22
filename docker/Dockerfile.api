@@ -17,6 +17,7 @@ COPY backend ./backend
 RUN pnpm --filter @anatoscan/shared build
 RUN cd backend && pnpm prisma generate
 RUN pnpm --filter backend build
+RUN cd backend && npx tsc prisma/seed.ts --outDir dist/prisma --skipLibCheck --module commonjs --target es2021 --esModuleInterop
 RUN pnpm --filter backend deploy --prod /prod/backend
 RUN cp -r /app/node_modules/.pnpm/@prisma+client* /prod/backend/node_modules/.pnpm/
 
@@ -34,4 +35,4 @@ COPY --from=builder /app/backend/package.json ./package.json
 USER nestjs
 ENV PORT=10000
 EXPOSE 10000
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/prisma/seed.js; node dist/main.js"]
