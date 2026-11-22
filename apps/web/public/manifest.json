@@ -1,0 +1,17 @@
+{
+  "name": "AnatoScan AR",
+  "short_name": "AnatoScan",
+  "description": "QR-based anatomy learning and AR visualization platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#10243A",
+  "theme_color": "#10243A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["education", "medical"]
+}

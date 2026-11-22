@@ -1,0 +1,764 @@
+// AnatoScan AR – Prisma Schema
+// PostgreSQL 16 | Prisma 6.x
+// All 31 entities as specified in the architecture
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================================
+// ENUMS
+// =====================================================================
+
+enum Role {
+  SUPER_ADMIN
+  FACULTY
+  STUDENT
+  GUEST
+}
+
+enum ContentStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum ModelStatus {
+  PROCESSING
+  READY
+  FAILED
+  ARCHIVED
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum QuizDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum ModuleType {
+  NORMAL_WORKING
+  WHAT_GOES_WRONG
+  HOW_IT_IS_MEASURED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PUBLISH
+  REJECT
+  APPROVE
+  UPLOAD
+  DOWNLOAD
+  SCAN
+  ATTEMPT_QUIZ
+}
+
+// =====================================================================
+// 1. USER & AUTH
+// =====================================================================
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+  role            Role     @default(STUDENT)
+  isActive        Boolean  @default(true) @map("is_active")
+  isEmailVerified Boolean  @default(false) @map("is_email_verified")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastLoginAt     DateTime? @map("last_login_at")
+
+  studentProfile  StudentProfile?
+  facultyProfile  FacultyProfile?
+  quizAttempts    QuizAttempt[]
+  learningActivities LearningActivity[]
+  bookmarks       Bookmark[]
+  auditLogs       AuditLog[]
+  refreshTokens   RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  revoked   Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// =====================================================================
+// 2. PROFILES
+// =====================================================================
+
+model StudentProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  firstName    String   @map("first_name")
+  lastName     String   @map("last_name")
+  studentId    String?  @unique @map("student_id")
+  batchYear    Int?     @map("batch_year")
+  departmentId String?  @map("department_id")
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@map("student_profiles")
+}
+
+model FacultyProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  firstName      String   @map("first_name")
+  lastName       String   @map("last_name")
+  employeeId     String?  @unique @map("employee_id")
+  designation    String?
+  qualification  String?
+  specialization String?
+  departmentId   String?  @map("department_id")
+  avatarUrl      String?  @map("avatar_url")
+  bio            String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department      Department?       @relation(fields: [departmentId], references: [id])
+  organAssignments OrganAssignment[]
+
+  @@map("faculty_profiles")
+}
+
+// =====================================================================
+// 3. DEPARTMENTS
+// =====================================================================
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String?  @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  students        StudentProfile[]
+  faculty         FacultyProfile[]
+  anatomicalSystems AnatomicalSystem[]
+
+  @@map("departments")
+}
+
+// =====================================================================
+// 4. ANATOMICAL SYSTEMS
+// =====================================================================
+
+model AnatomicalSystem {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  slug         String   @unique
+  description  String?
+  iconUrl      String?  @map("icon_url")
+  coverImageUrl String? @map("cover_image_url")
+  color        String?
+  orderIndex   Int      @default(0) @map("order_index")
+  isActive     Boolean  @default(true) @map("is_active")
+  departmentId String?  @map("department_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  organs     Organ[]
+
+  @@map("anatomical_systems")
+}
+
+// =====================================================================
+// 5. ORGANS
+// =====================================================================
+
+model Organ {
+  id               String        @id @default(uuid())
+  name             String
+  slug             String        @unique
+  scientificName   String?       @map("scientific_name")
+  latinName        String?       @map("latin_name")
+  systemId         String        @map("system_id")
+  description      String?
+  location         String?
+  thumbnailUrl     String?       @map("thumbnail_url")
+  coverImageUrl    String?       @map("cover_image_url")
+  status           ContentStatus @default(DRAFT)
+  isPublished      Boolean       @default(false) @map("is_published")
+  publishedAt      DateTime?     @map("published_at")
+  orderIndex       Int           @default(0) @map("order_index")
+  tags             String[]      @default([])
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  createdById      String?       @map("created_by_id")
+  approvedById     String?       @map("approved_by_id")
+  approvedAt       DateTime?     @map("approved_at")
+
+  system              AnatomicalSystem     @relation(fields: [systemId], references: [id])
+  content             OrganContent?
+  structures          AnatomicalStructure[]
+  disorders           Disorder[]
+  learningModules     LearningModule[]
+  models              ThreeDModel[]
+  qrCodes             QRCode[]
+  quizzes             Quiz[]
+  feedbacks           Feedback[]
+  errorReports        ErrorReport[]
+  scanEvents          ScanEvent[]
+  assignments         OrganAssignment[]
+  educationalResources EducationalResource[]
+  revisions           ContentRevision[]
+  bookmarks           Bookmark[]
+
+  @@map("organs")
+}
+
+// =====================================================================
+// 6. ORGAN ASSIGNMENT (Faculty ↔ Organ)
+// =====================================================================
+
+model OrganAssignment {
+  id              String   @id @default(uuid())
+  organId         String   @map("organ_id")
+  facultyProfileId String  @map("faculty_profile_id")
+  canEdit         Boolean  @default(true) @map("can_edit")
+  canPublish      Boolean  @default(false) @map("can_publish")
+  assignedAt      DateTime @default(now()) @map("assigned_at")
+
+  organ          Organ          @relation(fields: [organId], references: [id], onDelete: Cascade)
+  facultyProfile FacultyProfile @relation(fields: [facultyProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([organId, facultyProfileId])
+  @@map("organ_assignments")
+}
+
+// =====================================================================
+// 7. ORGAN CONTENT (rich textual anatomy content)
+// =====================================================================
+
+model OrganContent {
+  id              String   @id @default(uuid())
+  organId         String   @unique @map("organ_id")
+
+  // Anatomy
+  externalStructure    String? @map("external_structure")
+  internalStructure    String? @map("internal_structure")
+  chambers             String?
+  valves               String?
+  bloodSupply          String? @map("blood_supply")
+  nerveSupply          String? @map("nerve_supply")
+  lymphaticDrainage    String? @map("lymphatic_drainage")
+  anatomicalRelations  String? @map("anatomical_relations")
+
+  // Physiology
+  normalFunctioning    String? @map("normal_functioning")
+  physiologicalConcepts String? @map("physiological_concepts")
+
+  // Clinical
+  clinicalCorrelation  String? @map("clinical_correlation")
+  diagnosticMethods    String? @map("diagnostic_methods")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@map("organ_contents")
+}
+
+// =====================================================================
+// 8. ANATOMICAL STRUCTURES
+// =====================================================================
+
+model AnatomicalStructure {
+  id          String   @id @default(uuid())
+  organId     String   @map("organ_id")
+  name        String
+  description String?
+  location    String?
+  function    String?
+  meshName    String?  @map("mesh_name")  // matches 3D model mesh name
+  orderIndex  Int      @default(0) @map("order_index")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organ    Organ          @relation(fields: [organId], references: [id], onDelete: Cascade)
+  hotspots ModelHotspot[]
+
+  @@map("anatomical_structures")
+}
+
+// =====================================================================
+// 9. DISORDERS
+// =====================================================================
+
+model Disorder {
+  id               String   @id @default(uuid())
+  organId          String   @map("organ_id")
+  name             String
+  description      String?
+  causes           String?
+  symptoms         String?
+  structuralEffect String?  @map("structural_effect")
+  functionalEffect String?  @map("functional_effect")
+  imageUrl         String?  @map("image_url")
+  orderIndex       Int      @default(0) @map("order_index")
+  isActive         Boolean  @default(true) @map("is_active")
+  status           ContentStatus @default(DRAFT)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@map("disorders")
+}
+
+// =====================================================================
+// 10. LEARNING MODULES (3 per organ)
+// =====================================================================
+
+model LearningModule {
+  id          String     @id @default(uuid())
+  organId     String     @map("organ_id")
+  type        ModuleType
+  title       String
+  description String?
+  status      ContentStatus @default(DRAFT)
+  orderIndex  Int        @default(0) @map("order_index")
+  estimatedMinutes Int?  @map("estimated_minutes")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  organ    Organ           @relation(fields: [organId], references: [id], onDelete: Cascade)
+  sections ModuleSection[]
+  activities LearningActivity[]
+
+  @@unique([organId, type])
+  @@map("learning_modules")
+}
+
+model ModuleSection {
+  id          String   @id @default(uuid())
+  moduleId    String   @map("module_id")
+  title       String
+  content     String   // Rich text / markdown
+  contentType String   @default("markdown") @map("content_type") // markdown | html | flowchart
+  imageUrl    String?  @map("image_url")
+  videoUrl    String?  @map("video_url")
+  orderIndex  Int      @default(0) @map("order_index")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  module LearningModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("module_sections")
+}
+
+// =====================================================================
+// 11. 3D MODELS
+// =====================================================================
+
+model ThreeDModel {
+  id              String      @id @default(uuid())
+  organId         String      @map("organ_id")
+  name            String
+  description     String?
+  fileUrl         String?     @map("file_url")     // R2 URL to .glb
+  fileKey         String?     @map("file_key")     // R2 object key
+  fileSize        BigInt?     @map("file_size")
+  thumbnailUrl    String?     @map("thumbnail_url")
+  status          ModelStatus @default(PROCESSING)
+  isPrimary       Boolean     @default(false) @map("is_primary")
+  isPublished     Boolean     @default(false) @map("is_published")
+  arEnabled       Boolean     @default(true) @map("ar_enabled")
+  hasAnimations   Boolean     @default(false) @map("has_animations")
+  hasLayers       Boolean     @default(false) @map("has_layers")
+  polyCount       Int?        @map("poly_count")
+  uploadedById    String?     @map("uploaded_by_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  organ      Organ                @relation(fields: [organId], references: [id], onDelete: Cascade)
+  hotspots   ModelHotspot[]
+  layers     ModelLayer[]
+  animations ModelAnimation[]
+
+  @@map("three_d_models")
+}
+
+model ModelHotspot {
+  id               String   @id @default(uuid())
+  modelId          String   @map("model_id")
+  structureId      String?  @map("structure_id")
+  label            String
+  description      String?
+  positionX        Float    @map("position_x")
+  positionY        Float    @map("position_y")
+  positionZ        Float    @map("position_z")
+  normalX          Float    @default(0) @map("normal_x")
+  normalY          Float    @default(1) @map("normal_y")
+  normalZ          Float    @default(0) @map("normal_z")
+  orderIndex       Int      @default(0) @map("order_index")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  model     ThreeDModel          @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  structure AnatomicalStructure? @relation(fields: [structureId], references: [id])
+
+  @@map("model_hotspots")
+}
+
+model ModelLayer {
+  id          String   @id @default(uuid())
+  modelId     String   @map("model_id")
+  meshName    String   @map("mesh_name")  // exact mesh name in GLB
+  label       String
+  description String?
+  orderIndex  Int      @default(0) @map("order_index")
+  isVisible   Boolean  @default(true) @map("is_visible")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  model ThreeDModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@map("model_layers")
+}
+
+model ModelAnimation {
+  id          String   @id @default(uuid())
+  modelId     String   @map("model_id")
+  name        String   // animation clip name in GLB
+  label       String
+  description String?
+  durationSec Float?   @map("duration_sec")
+  orderIndex  Int      @default(0) @map("order_index")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  model ThreeDModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@map("model_animations")
+}
+
+// =====================================================================
+// 12. QR CODES
+// =====================================================================
+
+model QRCode {
+  id           String   @id @default(uuid())
+  organId      String   @map("organ_id")
+  code         String   @unique
+  url          String                     // permanent organ URL
+  pngUrl       String?  @map("png_url")  // R2 URL
+  svgUrl       String?  @map("svg_url")
+  errorLevel   String   @default("M") @map("error_level")
+  isActive     Boolean  @default(true) @map("is_active")
+  generatedAt  DateTime @default(now()) @map("generated_at")
+  generatedById String? @map("generated_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  organ      Organ       @relation(fields: [organId], references: [id], onDelete: Cascade)
+  scanEvents ScanEvent[]
+
+  @@map("qr_codes")
+}
+
+// =====================================================================
+// 13. SCAN EVENTS
+// =====================================================================
+
+model ScanEvent {
+  id              String   @id @default(uuid())
+  organId         String   @map("organ_id")
+  qrCodeId        String?  @map("qr_code_id")
+  sessionId       String   @map("session_id")  // anonymous
+  deviceCategory  String?  @map("device_category")  // mobile | tablet | desktop
+  browserCategory String?  @map("browser_category")
+  referrer        String?
+  pageEngagementSec Int?   @map("page_engagement_sec")
+  ipHash          String?  @map("ip_hash")     // hashed, not raw IP
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organ   Organ    @relation(fields: [organId], references: [id], onDelete: Cascade)
+  qrCode  QRCode?  @relation(fields: [qrCodeId], references: [id])
+
+  @@index([organId, createdAt])
+  @@index([createdAt])
+  @@map("scan_events")
+}
+
+// =====================================================================
+// 14. QUIZZES
+// =====================================================================
+
+model Quiz {
+  id               String         @id @default(uuid())
+  organId          String         @map("organ_id")
+  moduleType       ModuleType?    @map("module_type")
+  title            String
+  description      String?
+  difficulty       QuizDifficulty @default(MEDIUM)
+  timeLimitSeconds Int?           @map("time_limit_seconds")
+  passingScore     Int            @default(60) @map("passing_score") // percentage
+  status           ContentStatus  @default(DRAFT)
+  isPublished      Boolean        @default(false) @map("is_published")
+  createdById      String?        @map("created_by_id")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  organ     Organ         @relation(fields: [organId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String   @id @default(uuid())
+  quizId        String   @map("quiz_id")
+  questionText  String   @map("question_text")
+  explanation   String?
+  marks         Int      @default(1)
+  orderIndex    Int      @default(0) @map("order_index")
+  imageUrl      String?  @map("image_url")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options QuizOption[]
+  answers QuizAnswer[]
+
+  @@map("quiz_questions")
+}
+
+model QuizOption {
+  id         String   @id @default(uuid())
+  questionId String   @map("question_id")
+  optionText String   @map("option_text")
+  isCorrect  Boolean  @default(false) @map("is_correct")
+  orderIndex Int      @default(0) @map("order_index")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_options")
+}
+
+model QuizAttempt {
+  id           String    @id @default(uuid())
+  quizId       String    @map("quiz_id")
+  userId       String    @map("user_id")
+  score        Int       @default(0)
+  maxScore     Int       @map("max_score")
+  percentage   Float     @default(0)
+  passed       Boolean   @default(false)
+  timeTakenSec Int?      @map("time_taken_sec")
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  quiz    Quiz        @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers QuizAnswer[]
+
+  @@index([userId, quizId])
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id         String   @id @default(uuid())
+  attemptId  String   @map("attempt_id")
+  questionId String   @map("question_id")
+  optionId   String?  @map("option_id")  // null if skipped
+  isCorrect  Boolean  @default(false) @map("is_correct")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  attempt  QuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_answers")
+}
+
+// =====================================================================
+// 15. FEEDBACK
+// =====================================================================
+
+model Feedback {
+  id              String   @id @default(uuid())
+  organId         String   @map("organ_id")
+  userId          String?  @map("user_id")   // null = anonymous
+  overallRating   Int      @map("overall_rating")     // 1-5
+  contentClarity  Int?     @map("content_clarity")
+  educationalUsefulness Int? @map("educational_usefulness")
+  accuracyRating  Int?     @map("accuracy_rating")
+  confidenceLevel Int?     @map("confidence_level")  // 1-10 slider
+  comment         String?
+  suggestions     String?
+  isAnonymous     Boolean  @default(true) @map("is_anonymous")
+  isPublic        Boolean  @default(false) @map("is_public")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@index([organId])
+  @@map("feedbacks")
+}
+
+// =====================================================================
+// 16. ERROR REPORTS
+// =====================================================================
+
+model ErrorReport {
+  id           String      @id @default(uuid())
+  organId      String      @map("organ_id")
+  userId       String?     @map("user_id")
+  category     String      // incorrect_label | broken_model | qr_problem | ar_problem | incorrect_info | technical
+  description  String
+  pageUrl      String?     @map("page_url")
+  status       IssueStatus @default(OPEN)
+  assignedTo   String?     @map("assigned_to")
+  resolution   String?
+  internalNote String?     @map("internal_note")
+  resolvedAt   DateTime?   @map("resolved_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("error_reports")
+}
+
+// =====================================================================
+// 17. LEARNING ACTIVITY
+// =====================================================================
+
+model LearningActivity {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  organId         String?   @map("organ_id")
+  moduleId        String?   @map("module_id")
+  activityType    String    @map("activity_type") // view_organ | start_module | complete_module | view_3d | launch_ar
+  timeSpentSec    Int?      @map("time_spent_sec")
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module LearningModule? @relation(fields: [moduleId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("learning_activities")
+}
+
+// =====================================================================
+// 18. BOOKMARKS
+// =====================================================================
+
+model Bookmark {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  organId   String   @map("organ_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organId])
+  @@map("bookmarks")
+}
+
+// =====================================================================
+// 19. EDUCATIONAL RESOURCES
+// =====================================================================
+
+model EducationalResource {
+  id          String   @id @default(uuid())
+  organId     String   @map("organ_id")
+  title       String
+  type        String   // article | video | book | journal | website | pdf
+  url         String?
+  fileUrl     String?  @map("file_url")
+  description String?
+  authors     String?
+  year        Int?
+  orderIndex  Int      @default(0) @map("order_index")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@map("educational_resources")
+}
+
+// =====================================================================
+// 20. CONTENT REVISION HISTORY
+// =====================================================================
+
+model ContentRevision {
+  id          String   @id @default(uuid())
+  organId     String   @map("organ_id")
+  fieldName   String   @map("field_name")
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  changedById String   @map("changed_by_id")
+  note        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organ Organ @relation(fields: [organId], references: [id], onDelete: Cascade)
+
+  @@index([organId, createdAt])
+  @@map("content_revisions")
+}
+
+// =====================================================================
+// 21. AUDIT LOG
+// =====================================================================
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String?     @map("user_id")
+  action     AuditAction
+  entity     String      // e.g., "Organ", "User"
+  entityId   String?     @map("entity_id")
+  metadata   Json?
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
